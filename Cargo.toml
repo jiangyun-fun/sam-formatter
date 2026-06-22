@@ -22,4 +22,4 @@ parquet = { version = "59.0.0", features = ["arrow"] }
 noodles-sam = "0.85"
 noodles-bam = "0.90"
 # RNG for --downsample (reservoir / Bernoulli sampling).
-rand = "0.9"
+rand = "0.10"
