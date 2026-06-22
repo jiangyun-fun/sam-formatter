@@ -5,7 +5,7 @@ use std::error::Error;
 
 use noodles_sam as sam;
 use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 
 use crate::cli::{OutputFormat, Sampler};
 use crate::record::{DataRecord, from_alignment};
@@ -24,11 +24,15 @@ pub struct Cfg {
     pub seed: Option<u64>,
 }
 
-/// Builds the RNG: seeded for reproducibility, or OS-random when `--seed` is omitted.
+/// Builds the RNG: seeded for reproducibility, or system-random when `--seed` is omitted.
 fn make_rng(seed: Option<u64>) -> SmallRng {
     match seed {
         Some(s) => SmallRng::seed_from_u64(s),
-        None => SmallRng::from_os_rng(),
+        None => {
+            // rand 0.10 removed `from_os_rng`; seed from the system RNG instead.
+            let mut sys = rand::rngs::SysRng;
+            SmallRng::try_from_rng(&mut sys).expect("system RNG unavailable")
+        }
     }
 }
 
