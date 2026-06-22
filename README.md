@@ -14,6 +14,9 @@ columns.
   so memory stays bounded.
 - Parquet output is typed: `FLAG/POS/MAPQ/PNEXT/TLEN` as `int32`, text and tags as `utf8`,
   missing tags as `NULL`.
+- **Downsample**: `--downsample 0.1` keeps ~10% of records (Bernoulli); `--downsample 1000`
+  keeps exactly 1000 uniformly random records (reservoir sampling). `--seed` makes a sample
+  reproducible.
 
 ## Install
 
@@ -50,6 +53,18 @@ sam-formatter in.sam                        # NM:i:1 -> "1"        (value only)
 sam-formatter in.sam --keep-tag-prefix      # NM:i:1 -> "NM:i:1"   (full tag)
 ```
 
+Downsampling:
+
+```bash
+sam-formatter in.bam --downsample 0.1            # keep ~10% of records (Bernoulli)
+sam-formatter in.bam --downsample 1000           # keep exactly 1000 random records (reservoir)
+sam-formatter in.bam --downsample 1000 --seed 7  # reproducible sample
+```
+
+A fraction in `(0, 1)` keeps each record independently (≈ that share of the input); an
+integer `≥ 1` keeps exactly that many records via reservoir sampling (held in memory; the
+whole stream is read before any output). `--limit` caps the input before sampling.
+
 ## Options
 
 | Flag                 | Default   | Purpose                                              |
@@ -59,10 +74,12 @@ sam-formatter in.sam --keep-tag-prefix      # NM:i:1 -> "NM:i:1"   (full tag)
 | `-f, --format`       | auto      | `csv\|tsv\|psv\|parquet\|custom`                      |
 | `--input-format`     | `auto`    | `auto\|sam\|bam`                                     |
 | `-d, --delimiter`    | `,`       | delimiter for `custom`                               |
-| `-n, --limit`        | `1000000` | max records emitted                                  |
+| `-n, --limit`        | `1000000` | max records read from input (capped before sampling) |
 | `--detect-limit`     | `100000`  | records scanned to discover tags                     |
 | `--keep-tag-prefix`  | off       | keep `TAG:TYPE:VALUE` instead of value only          |
 | `--no-quotes`        | off       | disable CSV quoting                                  |
+| `--downsample`       | off       | fraction `(0,1)` or integer `≥1`; downsample output  |
+| `--seed`             | off       | `u64` seed for a reproducible `--downsample`         |
 
 ## Notes
 

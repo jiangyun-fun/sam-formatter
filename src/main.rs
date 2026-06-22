@@ -53,6 +53,8 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         return Err("--detect-limit must be greater than 0.".into());
     }
 
+    let sampler = args.sampler()?;
+
     let mut input = reader::open_input(&args.input)?;
     let input_format = reader::detect_format(&mut input, args.input_format)?;
     eprintln!("Detected input format: {input_format:?}");
@@ -65,6 +67,8 @@ fn run_app() -> Result<(), Box<dyn Error>> {
         limit: args.limit,
         detect_limit: args.detect_limit,
         keep_tag_prefix: args.keep_tag_prefix,
+        sampler,
+        seed: args.seed,
     };
 
     let count = match input_format {

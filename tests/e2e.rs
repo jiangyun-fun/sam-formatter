@@ -166,3 +166,142 @@ r2\t0\tchr1\t2\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\tNM:i:0\tZZ:Z:only-on-r
     let _ = fs::remove_file(sam_path);
     let _ = fs::remove_file(csv_path);
 }
+
+/// Builds a SAM fixture with `n` uniquely-named records (r0001..), each carrying `NM:i:i`
+/// so selected records are identifiable, on a single reference.
+fn sam_fixture(n: usize) -> String {
+    let mut sam = String::from("@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:1000000\n");
+    for i in 1..=n {
+        sam.push_str(&format!(
+            "r{:04}\t0\tchr1\t{i}\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\tNM:i:{i}\n",
+            i,
+        ));
+    }
+    sam
+}
+
+fn run_binary(args: &[&str]) -> std::process::Output {
+    Command::new(binary_path())
+        .args(args)
+        .output()
+        .expect("run binary")
+}
+
+#[test]
+fn reservoir_keeps_exact_count_and_is_reproducible() {
+    let sam_path = tmp_path("res.sam");
+    let out1 = tmp_path("res1.csv");
+    let out2 = tmp_path("res2.csv");
+    fs::write(&sam_path, sam_fixture(20)).expect("write fixture");
+
+    for out in [&out1, &out2] {
+        let run = run_binary(&[
+            sam_path.to_str().unwrap(),
+            "--downsample",
+            "5",
+            "--seed",
+            "7",
+            "-o",
+            out.to_str().unwrap(),
+        ]);
+        assert!(
+            run.status.success(),
+            "reservoir run failed: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+    }
+
+    let o1 = fs::read_to_string(&out1).expect("read o1");
+    let o2 = fs::read_to_string(&out2).expect("read o2");
+    assert_eq!(o1.lines().count(), 6, "header + exactly 5 sampled records");
+    assert_eq!(o1, o2, "same --seed must yield an identical sample");
+}
+
+#[test]
+fn bernoulli_is_deterministic_and_a_proper_subset() {
+    let sam_path = tmp_path("bern.sam");
+    let out1 = tmp_path("bern1.csv");
+    let out2 = tmp_path("bern2.csv");
+    fs::write(&sam_path, sam_fixture(20)).expect("write fixture");
+
+    for out in [&out1, &out2] {
+        let run = run_binary(&[
+            sam_path.to_str().unwrap(),
+            "--downsample",
+            "0.5",
+            "--seed",
+            "3",
+            "-o",
+            out.to_str().unwrap(),
+        ]);
+        assert!(
+            run.status.success(),
+            "bernoulli run failed: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+    }
+
+    let o1 = fs::read_to_string(&out1).expect("read o1");
+    let o2 = fs::read_to_string(&out2).expect("read o2");
+    assert_eq!(o1, o2, "same --seed must yield an identical sample");
+    let data_rows = o1.lines().count() - 1; // minus header
+    assert!(
+        (1..20).contains(&data_rows),
+        "expected a non-empty proper subset, got {data_rows} rows"
+    );
+}
+
+#[test]
+fn limit_caps_input_before_reservoir_samples() {
+    // 20 records; --limit 10 reads only the first 10; reservoir 5 from those.
+    let sam_path = tmp_path("limres.sam");
+    let out = tmp_path("limres.csv");
+    fs::write(&sam_path, sam_fixture(20)).expect("write fixture");
+
+    let run = run_binary(&[
+        sam_path.to_str().unwrap(),
+        "--limit",
+        "10",
+        "--downsample",
+        "5",
+        "--seed",
+        "1",
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    assert!(run.status.success());
+
+    let o = fs::read_to_string(&out).expect("read out");
+    assert_eq!(o.lines().count(), 6, "header + 5 sampled records");
+    for line in o.lines().skip(1) {
+        let qname = line.split(',').next().expect("qname");
+        let idx: usize = qname[1..].parse().expect("numeric index");
+        assert!(
+            idx <= 10,
+            "no record past the --limit cap should appear: {qname}"
+        );
+    }
+}
+
+#[test]
+fn rejects_invalid_downsample_values() {
+    let sam_path = tmp_path("rej.sam");
+    let out = tmp_path("rej.csv");
+    fs::write(&sam_path, sam_fixture(5)).expect("write fixture");
+
+    for bad in ["0", "-1", "2.5"] {
+        let run = run_binary(&[
+            sam_path.to_str().unwrap(),
+            "--downsample",
+            bad,
+            "-o",
+            out.to_str().unwrap(),
+        ]);
+        assert!(!run.status.success(), "'{bad}' should be rejected");
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        assert!(
+            stderr.contains("--downsample"),
+            "error should reference --downsample: {stderr}"
+        );
+    }
+}

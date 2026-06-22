@@ -45,9 +45,18 @@ pub enum InputFormat {
     Bam,
 }
 
+/// How to downsample the records, derived from the `--downsample` value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Sampler {
+    /// Keep each record independently with the given probability (a fraction in (0, 1)).
+    Bernoulli(f64),
+    /// Keep exactly this many uniformly random records (reservoir sampling).
+    Reservoir(usize),
+}
+
 /// A command-line tool to convert SAM/BAM alignments into a uniform table format.
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None, allow_negative_numbers = true)]
 pub struct Args {
     /// Input file (`.sam`, `.bam`, or `-` for standard input). Format is auto-detected
     /// unless `--input-format` is set.
@@ -89,6 +98,39 @@ pub struct Args {
     /// Don't quote fields in the output (only applies to CSV format).
     #[arg(long)]
     pub no_quotes: bool,
+
+    /// Downsample the output. A fraction in (0, 1) (e.g. `0.1` ≈ 10%) keeps each record
+    /// independently; an integer ≥ 1 (e.g. `1000`) keeps exactly that many uniformly
+    /// random records via reservoir sampling.
+    #[arg(long)]
+    pub downsample: Option<f64>,
+
+    /// Seed for `--downsample` reproducibility. Omit for a different random subset each
+    /// run; provide a `u64` for a reproducible subset.
+    #[arg(long)]
+    pub seed: Option<u64>,
+}
+
+impl Args {
+    /// Resolves `--downsample` into a [`Sampler`], validating the value:
+    /// - `(0, 1)` → `Bernoulli(fraction)`
+    /// - integer `≥ 1` → `Reservoir(count)`
+    /// - `≤ 0`, non-finite, or a non-integer `≥ 1` → error.
+    pub fn sampler(&self) -> Result<Option<Sampler>, &'static str> {
+        let Some(value) = self.downsample else {
+            return Ok(None);
+        };
+        if !value.is_finite() || value <= 0.0 {
+            return Err("--downsample must be a positive number");
+        }
+        if value < 1.0 {
+            Ok(Some(Sampler::Bernoulli(value)))
+        } else if value.fract() == 0.0 {
+            Ok(Some(Sampler::Reservoir(value as usize)))
+        } else {
+            Err("--downsample >= 1 must be an integer count; use a fraction < 1 for a percent")
+        }
+    }
 }
 
 /// Resolves the effective output format, honoring an explicit `--format` or, failing
@@ -111,5 +153,56 @@ pub fn resolve_output_format(args: &Args) -> OutputFormat {
         Some("parquet") | Some("parq") => OutputFormat::Parquet,
         // CSV (and any other/unknown extension) defaults to CSV.
         _ => OutputFormat::Csv,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(downsample: Option<f64>) -> Args {
+        Args {
+            input: "-".into(),
+            output: None,
+            limit: 1_000_000,
+            detect_limit: 100_000,
+            format: None,
+            input_format: InputFormat::Auto,
+            delimiter: ",".into(),
+            keep_tag_prefix: false,
+            no_quotes: false,
+            downsample,
+            seed: None,
+        }
+    }
+
+    #[test]
+    fn sampler_classifies_fraction_and_count() {
+        assert_eq!(
+            args(Some(0.1)).sampler().unwrap(),
+            Some(Sampler::Bernoulli(0.1))
+        );
+        assert_eq!(
+            args(Some(0.5)).sampler().unwrap(),
+            Some(Sampler::Bernoulli(0.5))
+        );
+        assert_eq!(
+            args(Some(100.0)).sampler().unwrap(),
+            Some(Sampler::Reservoir(100))
+        );
+        // `1` is ≥ 1 and integer-valued → one record (not 100%).
+        assert_eq!(
+            args(Some(1.0)).sampler().unwrap(),
+            Some(Sampler::Reservoir(1))
+        );
+        assert_eq!(args(None).sampler().unwrap(), None);
+    }
+
+    #[test]
+    fn sampler_rejects_invalid_values() {
+        assert!(args(Some(0.0)).sampler().is_err());
+        assert!(args(Some(-0.5)).sampler().is_err());
+        // Non-integer ≥ 1 is ambiguous → error.
+        assert!(args(Some(2.5)).sampler().is_err());
     }
 }
