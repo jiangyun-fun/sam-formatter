@@ -1,5 +1,8 @@
 # sam-formatter
 
+[![CI](https://github.com/jiangyun-fun/sam-formatter/actions/workflows/ci.yml/badge.svg)](https://github.com/jiangyun-fun/sam-formatter/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Convert **SAM/BAM** alignment files into a uniform tabular format — CSV, TSV, PSV,
 Parquet, or any custom delimiter — with optional SAM tags promoted to their own sorted
 columns.
@@ -99,4 +102,4 @@ formatting are always spec-correct, identically for SAM and BAM.
 
 ## License
 
-None yet — all rights reserved. Add a `LICENSE` before redistributing.
+Licensed under the [MIT License](LICENSE).

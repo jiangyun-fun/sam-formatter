@@ -1,0 +1,119 @@
+name: release
+
+# Build native release binaries and attach them to the GitHub release.
+# Triggers:
+#   - on tag push matching v*.*.*
+#   - manually via workflow_dispatch, passing an existing tag to (re)build.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and upload binaries for"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    # Don't abort other targets if one fails.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: echo "name=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.name }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Stage artifacts (unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          staging="sam-formatter-${{ steps.tag.outputs.name }}-${{ matrix.target }}"
+          mkdir "$staging"
+          cp "target/${{ matrix.target }}/release/sam-formatter" "$staging/"
+          cp README.md LICENSE "$staging/"
+          tar czf "$staging.tar.gz" "$staging"
+
+      - name: Stage artifacts (windows)
+        if: matrix.archive == 'zip'
+        shell: bash
+        run: |
+          staging="sam-formatter-${{ steps.tag.outputs.name }}-${{ matrix.target }}"
+          mkdir "$staging"
+          cp "target/${{ matrix.target }}/release/sam-formatter.exe" "$staging/"
+          cp README.md LICENSE "$staging/"
+          7z a "$staging.zip" "$staging"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sam-formatter-${{ matrix.target }}
+          path: sam-formatter-*.${{ matrix.archive }}
+          retention-days: 7
+
+  upload:
+    name: Attach binaries to release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: echo "name=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release if missing, then upload assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.name }}"
+          # Create the release if it doesn't exist yet; otherwise just upload.
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "$tag" --generate-notes
+          fi
+          gh release upload "$tag" artifacts/* --clobber

@@ -2,6 +2,12 @@
 name = "sam-formatter"
 version = "1.2.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/jiangyun-fun/sam-formatter"
+homepage = "https://github.com/jiangyun-fun/sam-formatter"
+readme = "README.md"
+keywords = ["sam", "bam", "bioinformatics", "sequencing", "parquet"]
+categories = ["science::bioinformatics", "command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
