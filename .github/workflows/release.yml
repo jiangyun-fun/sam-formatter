@@ -118,6 +118,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No checkout in this job, so tell `gh` which repo to target.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           tag="${{ steps.tag.outputs.name }}"
