@@ -23,13 +23,30 @@ columns.
 
 ## Install
 
+### Bioconda
+
 ```bash
-cargo install --path .
-# or build locally:
-cargo build --release   # binary at target/release/sam-formatter
+conda install -c conda-forge -c bioconda sam-formatter
+mamba install -c conda-forge -c bioconda sam-formatter   # faster solver
+pixi global install sam-formatter                         # pixi
+```
+
+### Cargo
+
+```bash
+cargo install sam-formatter
 ```
 
 Requires Rust ≥ 1.89 (noodles).
+
+### From source
+
+```bash
+git clone https://github.com/jiangyun-fun/sam-formatter.git
+cd sam-formatter
+cargo install --path .
+# or: cargo build --release   # binary at target/release/sam-formatter
+```
 
 ## Usage
 
