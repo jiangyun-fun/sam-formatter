@@ -48,6 +48,21 @@ cargo install --path .
 # or: cargo build --release   # binary at target/release/sam-formatter
 ```
 
+### Biocontainers
+
+Prebuilt images auto-built from the Bioconda package (no Rust toolchain needed):
+
+```bash
+# Docker
+docker run --rm -v "$PWD:$PWD" -w "$PWD" \
+  quay.io/biocontainers/sam-formatter:1.2.0--hab7d0fd_0 sam-formatter --help
+
+# Singularity / Apptainer
+singularity exec docker://quay.io/biocontainers/sam-formatter:1.2.0--hab7d0fd_0 sam-formatter --help
+```
+
+See all tags at [quay.io/biocontainers/sam-formatter](https://quay.io/repository/biocontainers/sam-formatter).
+
 ## Usage
 
 ```bash
